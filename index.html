@@ -1,0 +1,15 @@
+import cv2
+from pyzbar.pyzbar import decode
+
+cap = cv2.VideoCapture(0)
+
+while True:
+    _, frame = cap.read()
+
+    for code in decode(frame):
+        print("Scanned:", code.data.decode("utf-8"))
+
+    cv2.imshow("QR Scanner", frame)
+
+    if cv2.waitKey(1) == ord('q'):
+        break
