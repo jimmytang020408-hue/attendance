@@ -6,10 +6,12 @@ cap = cv2.VideoCapture(0)
 while True:
     _, frame = cap.read()
 
-    for code in decode(frame):
-        print("Scanned:", code.data.decode("utf-8"))
+    codes = decode(frame)
 
-    cv2.imshow("QR Scanner", frame)
+    if codes:
+        print("Scanned:", codes[0].data.decode())
+
+    cv2.imshow("Scanner", frame)
 
     if cv2.waitKey(1) == ord('q'):
         break
