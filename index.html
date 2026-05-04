@@ -1,17 +1,245 @@
-import cv2
-from pyzbar.pyzbar import decode
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Attendance</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-cap = cv2.VideoCapture(0)
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
 
-while True:
-    _, frame = cap.read()
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #111;
+      margin-bottom: 2rem;
+      letter-spacing: -0.01em;
+    }
 
-    codes = decode(frame)
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid #e8e8e8;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 360px;
+      margin-bottom: 1rem;
+    }
 
-    if codes:
-        print("Scanned:", codes[0].data.decode())
+    #reader { width: 100% !important; border-radius: 10px; overflow: hidden; }
+    #reader video { border-radius: 10px; }
 
-    cv2.imshow("Scanner", frame)
+    .scan-btn {
+      width: 100%;
+      padding: 0.75rem;
+      margin-top: 1rem;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .scan-btn:hover { background: #333; }
+    .scan-btn.stop  { background: #e8e8e8; color: #111; }
 
-    if cv2.waitKey(1) == ord('q'):
-        break
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 0.5rem 0;
+      color: #bbb;
+      font-size: 0.75rem;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e8e8e8;
+    }
+
+    .manual-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      outline: none;
+      background: #fafafa;
+      color: #111;
+    }
+    input[type="text"]:focus { border-color: #111; }
+
+    .submit-btn {
+      padding: 0.65rem 1rem;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .submit-btn:hover { background: #333; }
+
+    #status {
+      font-size: 0.82rem;
+      text-align: center;
+      padding: 0.65rem 1rem;
+      border-radius: 10px;
+      background: #f5f5f5;
+      color: #888;
+      margin-top: 1rem;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, color 0.2s;
+    }
+    #status.success { background: #edf7f2; color: #2a7a50; }
+    #status.late    { background: #fdf6e3; color: #b07a20; }
+    #status.error   { background: #fdf0ee; color: #c0392b; }
+  </style>
+</head>
+<body>
+
+  <h1>📋 Attendance</h1>
+
+  <div class="card">
+    <div id="reader"></div>
+    <button class="scan-btn" id="scanBtn" onclick="toggleScanner()">Start Scanner</button>
+
+    <div class="divider">or enter ID manually</div>
+
+    <div class="manual-row">
+      <input type="text" id="manualId" placeholder="Enter ID..." onkeydown="if(event.key==='Enter') submitManual()" />
+      <button class="submit-btn" onclick="submitManual()">Submit</button>
+    </div>
+
+    <div id="status">Waiting...</div>
+  </div>
+
+<script>
+  // ── Config ────────────────────────────────────────────────────────────
+  const AIRTABLE_API_KEY = "YOUR_API_TOKEN";
+  const BASE_ID          = "YOUR_BASE_ID";
+  const TABLE_NAME       = "YOUR_TABLE_NAME";
+  const QR_FIELD         = "QR_Code";
+  const STATUS_FIELD     = "Status";
+  const LATE_AFTER       = "09:00";
+  // ─────────────────────────────────────────────────────────────────────
+
+  let scanner = null;
+  let scannerRunning = false;
+  let lastScan = null, cooldown = false;
+
+  function getStatus() {
+    const [h, m] = LATE_AFTER.split(":").map(Number);
+    const cutoff = new Date();
+    cutoff.setHours(h, m, 0, 0);
+    return new Date() > cutoff ? "Late" : "Present";
+  }
+
+  function setStatus(type, msg) {
+    const el = document.getElementById("status");
+    el.className = type;
+    el.textContent = msg;
+  }
+
+  async function markAttendance(value) {
+    setStatus("", "Looking up record...");
+
+    try {
+      const res = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}` +
+        `?filterByFormula=${encodeURIComponent(`{${QR_FIELD}}="${value}"`)}`,
+        { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+      );
+      const data = await res.json();
+
+      if (!data.records?.length) {
+        setStatus("error", `No record found for: ${value}`);
+        return;
+      }
+
+      const recordId = data.records[0].id;
+      const status   = getStatus();
+
+      const upd = await fetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ fields: { [STATUS_FIELD]: status } })
+        }
+      );
+
+      if (!upd.ok) throw new Error("Update failed");
+
+      setStatus(status === "Late" ? "late" : "success", `Marked ${status}: ${value}`);
+
+    } catch (e) {
+      setStatus("error", e.message || "Something went wrong");
+    }
+  }
+
+  // QR scanner
+  function toggleScanner() {
+    if (scannerRunning) {
+      scanner.clear();
+      scannerRunning = false;
+      document.getElementById("scanBtn").textContent = "Start Scanner";
+      document.getElementById("scanBtn").classList.remove("stop");
+    } else {
+      if (!scanner) {
+        scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 220 });
+      }
+      scanner.render(onScanSuccess, () => {});
+      scannerRunning = true;
+      document.getElementById("scanBtn").textContent = "Stop Scanner";
+      document.getElementById("scanBtn").classList.add("stop");
+    }
+  }
+
+  function onScanSuccess(qr) {
+    if (cooldown || qr === lastScan) return;
+    cooldown = true;
+    lastScan = qr;
+    markAttendance(qr);
+    setTimeout(() => { cooldown = false; lastScan = null; }, 3000);
+  }
+
+  // Manual entry
+  function submitManual() {
+    const val = document.getElementById("manualId").value.trim();
+    if (!val) return;
+    document.getElementById("manualId").value = "";
+    markAttendance(val);
+  }
+</script>
+</body>
+</html>
