@@ -158,7 +158,7 @@
     cutoff.setHours(h, m, 0, 0);
     return new Date() > cutoff ? "Late" : "Present";
   }
-// Updates the status box on the screen
+// Updates the color of the status box for convinience
   function setStatus(type, msg) {
     const el = document.getElementById("status");
     el.className = type;
