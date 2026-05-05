@@ -140,7 +140,6 @@
   </div>
 
 <script>
-  //Constants used for further purposes
   const AIRTABLE_API_KEY = "patYz5lRtzfBTgvye";
   const BASE_ID          = "app5ijYL6JzH9alCV";
   const TABLE_NAME       = "Student Attendance";
@@ -148,26 +147,29 @@
   const STATUS_FIELD     = "Status";
   const LATE_AFTER       = "08:30";
 
-  let scanner = null;
+  let scanner        = null;
   let scannerRunning = false;
-  let lastScan = null, cooldown = false;
-// This declares whether a student is late or present depending on the time frame in which it was scanned
+  let lastScan       = null;
+  let cooldown       = false;
+
   function getStatus() {
     const [h, m] = LATE_AFTER.split(":").map(Number);
     const cutoff = new Date();
     cutoff.setHours(h, m, 0, 0);
     return new Date() > cutoff ? "Late" : "Present";
   }
-// Updates the color of the status box for convinience
+
   function setStatus(type, msg) {
     const el = document.getElementById("status");
     el.className = type;
     el.textContent = msg;
   }
-//Shows a loading message while matching the data scanned with AirTable
+
   async function markAttendance(value) {
+    value = value.trim(); // strip any extra whitespace from scan
     setStatus("", "Looking up record...");
-//This will send a request to Airtable to find the scanned qr code and return the data
+    console.log("Looking up scanned value:", JSON.stringify(value)); // debug
+
     try {
       const res = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}` +
@@ -175,16 +177,16 @@
         { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
       );
       const data = await res.json();
-//If no value is found, then it'll set the status as error and show that no record is found for that specific value
+      console.log("Airtable response:", data); // debug
+
       if (!data.records?.length) {
         setStatus("error", `No record found for: ${value}`);
         return;
       }
-// Get Airtable record ID and determine if student is present or late
+
       const recordId = data.records[0].id;
       const status   = getStatus();
-// Send request to Airtable to update the student's Status field
-// Then show success message if update works, otherwise show error
+
       const upd = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,
         {
@@ -206,21 +208,37 @@
     }
   }
 
-  // QR scanner
-  function toggleScanner() {
+  async function toggleScanner() {
+    const btn = document.getElementById("scanBtn");
+
     if (scannerRunning) {
-      scanner.clear();
+      await scanner.stop();
       scannerRunning = false;
-      document.getElementById("scanBtn").textContent = "Start Scanner";
-      document.getElementById("scanBtn").classList.remove("stop");
-    } else {
-      if (!scanner) {
-        scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 220 });
-      }
-      scanner.render(onScanSuccess, () => {});
+      btn.textContent = "Start Scanner";
+      btn.classList.remove("stop");
+      return;
+    }
+
+    if (typeof Html5Qrcode === "undefined") {
+      setStatus("error", "QR library not loaded. Check your internet connection.");
+      return;
+    }
+
+    try {
+      scanner = new Html5Qrcode("reader");
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 220 },
+        (decodedText) => onScanSuccess(decodedText)
+      );
+
       scannerRunning = true;
-      document.getElementById("scanBtn").textContent = "Stop Scanner";
-      document.getElementById("scanBtn").classList.add("stop");
+      btn.textContent = "Stop Scanner";
+      btn.classList.add("stop");
+
+    } catch (err) {
+      setStatus("error", "Camera error: " + (err.message || "Check permissions & use HTTPS"));
     }
   }
 
@@ -232,7 +250,6 @@
     setTimeout(() => { cooldown = false; lastScan = null; }, 3000);
   }
 
-  // Manual entry
   function submitManual() {
     const val = document.getElementById("manualId").value.trim();
     if (!val) return;
