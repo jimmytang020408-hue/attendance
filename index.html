@@ -123,7 +123,6 @@
   </style>
 </head>
 <body>
-
   <h1>📋 Attendance</h1>
 
   <div class="card">
@@ -141,35 +140,34 @@
   </div>
 
 <script>
-  // ── Config ────────────────────────────────────────────────────────────
+  //Constants used for further purposes
   const AIRTABLE_API_KEY = "patYz5lRtzfBTgvye";
   const BASE_ID          = "app5ijYL6JzH9alCV";
   const TABLE_NAME       = "Student Attendance";
   const QR_FIELD         = "QR";
   const STATUS_FIELD     = "Status";
   const LATE_AFTER       = "08:30";
-  // ─────────────────────────────────────────────────────────────────────
 
   let scanner = null;
   let scannerRunning = false;
   let lastScan = null, cooldown = false;
-
+// This declares whether a student is late or present depending on the time frame in which it was scanned
   function getStatus() {
     const [h, m] = LATE_AFTER.split(":").map(Number);
     const cutoff = new Date();
     cutoff.setHours(h, m, 0, 0);
     return new Date() > cutoff ? "Late" : "Present";
   }
-
+// Updates the status box on the screen
   function setStatus(type, msg) {
     const el = document.getElementById("status");
     el.className = type;
     el.textContent = msg;
   }
-
+//Shows a loading message while matching the data scanned with AirTable
   async function markAttendance(value) {
     setStatus("", "Looking up record...");
-
+//This will send a request to Airtable to find the scanned qr code and return the data
     try {
       const res = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}` +
@@ -177,15 +175,16 @@
         { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
       );
       const data = await res.json();
-
+//If no value is found, then it'll set the status as error and show that no record is found for that specific value
       if (!data.records?.length) {
         setStatus("error", `No record found for: ${value}`);
         return;
       }
-
+// Get Airtable record ID and determine if student is present or late
       const recordId = data.records[0].id;
       const status   = getStatus();
-
+// Send request to Airtable to update the student's Status field
+// Then show success message if update works, otherwise show error
       const upd = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,
         {
