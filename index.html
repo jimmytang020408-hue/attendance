@@ -147,13 +147,13 @@
   const STATUS_FIELD     = "Status";
   const LATE_AFTER       = "08:30";
 
-  let scanner        = null;
-  let scannerRunning = false;
-  let lastScan       = null;
-  let cooldown       = false;
+  let scanner        = null;    
+  let scannerRunning = false;    //determines if camera is on
+  let lastScan       = null;    //Prevents scans from duplicating
+  let cooldown       = false;  //Delay between scans
 
   function getStatus() {
-    const [h, m] = LATE_AFTER.split(":").map(Number);
+    const [h, m] = LATE_AFTER.split(":").map(Number);         //Splits 8:30 into 8 and 30 and compares to the current time to determine whether present or late.
     const cutoff = new Date();
     cutoff.setHours(h, m, 0, 0);
     return new Date() > cutoff ? "Late" : "Present";
@@ -161,36 +161,36 @@
 
   function setStatus(type, msg) {
     const el = document.getElementById("status");
-    el.className = type;
+    el.className = type;                                 //Determines whether it's a success/late/error and displays present/late/or error
     el.textContent = msg;
   }
 
   async function markAttendance(value) {
-    value = value.trim(); // strip any extra whitespace from scan
+    value = value.trim();                               //removes spaces from numbers to prevent any issues
     setStatus("", "Looking up record...");
-    console.log("Looking up scanned value:", JSON.stringify(value)); // debug
+    console.log("Looking up scanned value:", JSON.stringify(value));
 
     try {
       const res = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}` +
-        `?filterByFormula=${encodeURIComponent(`{${QR_FIELD}}="${value}"`)}`,
-        { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+        `?filterByFormula=${encodeURIComponent(`{${QR_FIELD}}="${value}"`)}`,            //Goes into airtable to look for the scanned value that corresponds to my table and
+        { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }                    
       );
       const data = await res.json();
       console.log("Airtable response:", data); // debug
 
-      if (!data.records?.length) {
+      if (!data.records?.length) {                                                   //if value isn't found then itll display error, if it is found then itll continue
         setStatus("error", `No record found for: ${value}`);
         return;
       }
 
-      const recordId = data.records[0].id;
+      const recordId = data.records[0].id;                                  
       const status   = getStatus();
 
       const upd = await fetch(
-        `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,
+        `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,          
         {
-          method: "PATCH",
+          method: "PATCH",                                                                           //Goes into airtable to look for the scanned value again
           headers: {
             Authorization: `Bearer ${AIRTABLE_API_KEY}`,
             "Content-Type": "application/json"
@@ -199,21 +199,21 @@
         }
       );
 
-      if (!upd.ok) throw new Error("Update failed");
+      if (!upd.ok) throw new Error("Update failed");                                                           //if record was found but nothing is updated, itll display update failed
 
-      setStatus(status === "Late" ? "late" : "success", `Marked ${status}: ${value}`);
+      setStatus(status === "Late" ? "late" : "success", `Marked ${status}: ${value}`);                       //if found, then marked present/late
 
     } catch (e) {
       setStatus("error", e.message || "Something went wrong");
     }
   }
 
-  async function toggleScanner() {
+  async function toggleScanner() {                                               //This allows for the scanner to be toggled on and off
     const btn = document.getElementById("scanBtn");
 
     if (scannerRunning) {
-      await scanner.stop();
-      scannerRunning = false;
+      await scanner.stop();                                                   //if the scanner is on, then itll continue the block 
+      scannerRunning = false;                                                 //allows for camera to be toggled off if camera is on
       btn.textContent = "Start Scanner";
       btn.classList.remove("stop");
       return;
@@ -234,25 +234,25 @@
       );
 
       scannerRunning = true;
-      btn.textContent = "Stop Scanner";
+      btn.textContent = "Stop Scanner";                           //When the scanner is on, the button will update to stop scanner
       btn.classList.add("stop");
 
     } catch (err) {
-      setStatus("error", "Camera error: " + (err.message || "Check permissions & use HTTPS"));
+      setStatus("error", "Camera error: " + (err.message || "Check permissions & use HTTPS"));           //If no camera is found then itll display this message.
     }
   }
 
   function onScanSuccess(qr) {
     if (cooldown || qr === lastScan) return;
     cooldown = true;
-    lastScan = qr;
+    lastScan = qr;                                                               //When a qr is scanned, it'll have a cooldown before scanning another one and remember the value of the previous scanned to prevent dupes.
     markAttendance(qr);
     setTimeout(() => { cooldown = false; lastScan = null; }, 3000);
   }
 
   function submitManual() {
     const val = document.getElementById("manualId").value.trim();
-    if (!val) return;
+    if (!val) return;                                                         //if qr cant be scanned then user can resort to inputting a value
     document.getElementById("manualId").value = "";
     markAttendance(val);
   }
