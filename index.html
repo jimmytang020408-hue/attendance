@@ -190,7 +190,7 @@
       const upd = await fetch(
         `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${recordId}`,          
         {
-          method: "PATCH",                                                                           //Goes into airtable to look for the scanned value again
+          method: "PATCH",                                                                           //if value is found then itll send the data to airtable telling it to update the status of the student
           headers: {
             Authorization: `Bearer ${AIRTABLE_API_KEY}`,
             "Content-Type": "application/json"
