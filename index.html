@@ -175,8 +175,7 @@
         `?filterByFormula=${encodeURIComponent(`{${QR_FIELD}}="${value}"`)}`,            
         { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }                    
       );
-      const data = await res.json();
-      console.log("Airtable response:", data); 
+      const data = await res.json(); 
 
       if (!data.records?.length) {                                             
         setStatus("error", `No record found for: ${value}`);
