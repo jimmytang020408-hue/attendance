@@ -168,7 +168,6 @@
   async function markAttendance(value) {
     value = value.trim();                             
     setStatus("", "Looking up record...");
-    console.log("Looking up scanned value:", JSON.stringify(value));
 
     try {
       const res = await fetch(
